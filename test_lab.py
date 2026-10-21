@@ -9,7 +9,16 @@ from openai import APITimeoutError
 from streamlit.testing.v1 import AppTest
 
 from pipeline import (DEFAULT_NIM_MODEL, DEFAULT_OLLAMA_MODEL, KRIKRI_MODEL, GREEK_SYSTEM,
-                      TRANSLATION_SYSTEM, ask_nim, ask_ollama, translate)
+                      TRANSLATION_SYSTEM, ask_nim, ask_ollama, list_ollama_models,
+                      parse_model_list, translate)
+from ui import caps, load_texts
+
+
+def english_app():
+    # The app opens in Tsakonian; these tests check English labels.
+    app = AppTest.from_file(str(Path(__file__).with_name("app.py")))
+    app.session_state["ui_lang"] = "en"
+    return app.run()
 
 
 def ollama_response(text="translation", **extra):
@@ -23,6 +32,11 @@ def nim_response(text="Greek reply", reason="stop"):
     return SimpleNamespace(choices=[SimpleNamespace(
         message=SimpleNamespace(content=text), finish_reason=reason,
     )])
+
+
+def send(app, text):
+    app.text_input(key="message").set_value(text)
+    return app.button(key="send").click().run()
 
 
 def krikri_response(text="Απάντηση", **extra):
@@ -41,6 +55,14 @@ class PipelineTests(unittest.TestCase):
         })
         self.settings = settings_patch.start()
         self.addCleanup(settings_patch.stop)
+        # The installed-model list falls back to the static choices without Ollama.
+        tags_patch = patch("pipeline.httpx.get", side_effect=httpx.ConnectError("Ollama is not running"))
+        tags_patch.start()
+        self.addCleanup(tags_patch.stop)
+        # App runs must not create logs/ in the repository.
+        log_patch = patch("activity_log.setup_logging")
+        log_patch.start()
+        self.addCleanup(log_patch.stop)
 
     @patch.dict(os.environ, {"NVIDIA_API_KEY": "test-key"})
     @patch("pipeline.httpx.post")
@@ -49,8 +71,8 @@ class PipelineTests(unittest.TestCase):
         create = client_class.return_value.chat.completions.create
         create.side_effect = httpx.ConnectError("Reply service unavailable")
         post.return_value = ollama_response("Ελληνική μετάφραση <script>unsafe</script>")
-        app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
-        app.chat_input[0].set_value("Tsakonian input").run()
+        app = english_app()
+        send(app, "Tsakonian input")
         user_blocks = [m.value for m in app.chat_message[0].markdown]
         self.assertEqual(user_blocks[0], "Tsakonian input")
         self.assertIn('class="user-greek-translation"', user_blocks[1])
@@ -108,10 +130,10 @@ class PipelineTests(unittest.TestCase):
     @patch("openai.OpenAI")
     def test_local_mode_runs_all_steps_without_an_nvidia_key(self, client_class, post, values):
         post.side_effect = [ollama_response("Ερώτηση"), krikri_response(), ollama_response("Τσακώνικα")]
-        app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
+        app = english_app()
         self.assertFalse(app.exception)
         self.assertFalse(app.error)
-        app.chat_input[0].set_value("Καούρα").run()
+        send(app, "Καούρα")
         self.assertFalse(app.exception)
         self.assertFalse(app.error)
         client_class.assert_not_called()
@@ -123,18 +145,18 @@ class PipelineTests(unittest.TestCase):
     @patch("pipeline.httpx.post")
     @patch("openai.OpenAI")
     def test_new_defaults_apply_without_losing_turns_and_krikri_remains_selectable(self, client_class, post):
-        app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
+        app = english_app()
         pending = {"tsd_in": "Καούρα", "ell_in": "Ερώτηση", "error": "Previous model timed out"}
         app.session_state["pending_turn"] = pending.copy()
         self.settings.return_value = {"GREEK_BACKEND": "ollama", "OLLAMA_CHAT_MODEL": DEFAULT_OLLAMA_MODEL}
         app.run()
         self.assertFalse(app.exception)
-        self.assertEqual(app.selectbox[0].value, "ollama")
-        self.assertEqual(app.selectbox[1].value, "gemma4:e4b")
+        self.assertEqual(app.segmented_control(key="greek_backend").value, "ollama")
+        self.assertEqual(app.selectbox(key="local_greek_model").value, "gemma4:e4b")
         self.assertEqual(app.session_state["pending_turn"], pending)
-        app.selectbox[1].select(KRIKRI_MODEL).run()
+        app.selectbox(key="local_greek_model").select(KRIKRI_MODEL).run()
         app.run()
-        self.assertEqual(app.selectbox[1].value, KRIKRI_MODEL)
+        self.assertEqual(app.selectbox(key="local_greek_model").value, KRIKRI_MODEL)
         post.side_effect = [krikri_response(), ollama_response("Τσακώνικα")]
         next(b for b in app.button if b.label == "Retry failed step").click().run()
         self.assertFalse(app.exception)
@@ -152,10 +174,10 @@ class PipelineTests(unittest.TestCase):
         nim_call = client_class.return_value.chat.completions.create
         nim_call.side_effect = APITimeoutError(request=httpx.Request("POST", "https://integrate.api.nvidia.com/v1/chat/completions"))
         post.return_value = ollama_response("Ερώτηση")
-        app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
-        app.chat_input[0].set_value("Καούρα").run()
+        app = english_app()
+        send(app, "Καούρα")
         self.assertEqual(post.call_count, 1)
-        app.selectbox[0].select("ollama").run()
+        app.segmented_control(key="greek_backend").select("ollama").run()
         self.assertEqual(post.call_count, 1)
         post.side_effect = [krikri_response(), ollama_response("Τσακώνικα")]
         next(b for b in app.button if b.label == "Retry failed step").click().run()
@@ -211,6 +233,12 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(messages[-1], {"role": "user", "content": "current"})
         self.assertNotIn("private", str(messages))
 
+    def test_capitalised_labels_drop_accents_but_keep_letter_diacritics(self):
+        cases = {"Μοντέλο": "ΜΟΝΤΕΛΟ", "τσάι": "ΤΣΑΪ", "αύριο": "ΑΥΡΙΟ",
+                 "τ̔α σ̌ ν̇": "Τ̔Α Σ̌ Ν̇", "Show Greek": "SHOW GREEK"}
+        for text, expected in cases.items():
+            self.assertEqual(caps(text), expected)
+
     def test_nim_rejects_missing_or_truncated_reply(self):
         client = Mock()
         for content, reason in [(None, "stop"), ("partial", "length")]:
@@ -262,7 +290,7 @@ class PipelineTests(unittest.TestCase):
         nim_call = client_class.return_value.chat.completions.create
         nim_call.return_value = nim_response("Απάντηση")
         post.return_value = ollama_response("Τσακώνικα")
-        app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
+        app = english_app()
         app.session_state["pending_turn"] = {
             "tsd_in": "Καούρα", "ell_in": "Ερώτηση", "error": "Previous model timed out",
         }
@@ -278,12 +306,65 @@ class PipelineTests(unittest.TestCase):
     @patch.dict(os.environ, {"NVIDIA_API_KEY": "test-key"})
     @patch("pipeline.httpx.post")
     @patch("openai.OpenAI")
+    def test_starter_uses_its_stored_greek_instead_of_translating(self, client_class, post):
+        starter = next(s for s in load_texts()["starters"] if s.get("tsd"))
+        nim_call = client_class.return_value.chat.completions.create
+        nim_call.return_value = nim_response("Απάντηση")
+        post.return_value = ollama_response("Τσακώνικα")
+        app = english_app()
+        app.button(key="starter_0").click().run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        self.assertEqual(post.call_count, 1)  # only the Greek → Tsakonian reply
+        self.assertEqual(nim_call.call_args.args[0] if nim_call.call_args.args else
+                         nim_call.call_args.kwargs["messages"][-1]["content"], starter["ell"])
+        turn = app.session_state["turns"][0]
+        self.assertEqual((turn["tsd_in"], turn["ell_in"]), (starter["tsd"], starter["ell"]))
+
+    @patch.dict(os.environ, {"NVIDIA_API_KEY": "test-key"})
+    @patch("pipeline.httpx.post")
+    @patch("openai.OpenAI")
+    def test_activity_log_records_each_stage_of_a_turn(self, client_class, post):
+        client_class.return_value.chat.completions.create.return_value = nim_response("Απάντηση")
+        post.side_effect = [ollama_response("Ερώτηση"), ollama_response("Τσακώνικα")]
+        app = english_app()
+        with self.assertLogs("tsakonian_chat", "INFO") as logs:
+            send(app, "Καούρα")
+        text = "\n".join(logs.output)
+        for expected in ('user message: "Καούρα"', "turn started", "Tsakonian → Greek [leonida] started",
+                         'Tsakonian → Greek [leonida] done', '"Ερώτηση"', "Greek reply [nim/",
+                         "Greek → Tsakonian [leonida] done", "turn complete", '"Τσακώνικα"'):
+            self.assertIn(expected, text)
+
+    @patch.dict(os.environ, {"NVIDIA_API_KEY": "test-key"})
+    @patch("pipeline.httpx.post")
+    @patch("openai.OpenAI")
+    def test_activity_log_records_failures_and_retries(self, client_class, post):
+        client_class.return_value.chat.completions.create.side_effect = httpx.ConnectError("down")
+        post.return_value = ollama_response("Ερώτηση")
+        app = english_app()
+        with self.assertLogs("tsakonian_chat", "INFO") as logs:
+            send(app, "Καούρα")
+            client_class.return_value.chat.completions.create.side_effect = None
+            client_class.return_value.chat.completions.create.return_value = nim_response("Απάντηση")
+            post.return_value = ollama_response("Τσακώνικα")
+            next(b for b in app.button if b.label == "Retry failed step").click().run()
+        text = "\n".join(logs.output)
+        self.assertIn("ERROR", text)
+        self.assertIn("Greek reply [nim/", text)
+        self.assertIn("FAILED", text)
+        self.assertIn("retry requested; completed stages kept: ell_in", text)
+        self.assertIn("Tsakonian → Greek skipped", text)
+
+    @patch.dict(os.environ, {"NVIDIA_API_KEY": "test-key"})
+    @patch("pipeline.httpx.post")
+    @patch("openai.OpenAI")
     def test_cut_off_nim_reply_recovers_without_repeating_source_translation(self, client_class, post):
         nim_call = client_class.return_value.chat.completions.create
         nim_call.side_effect = [nim_response("partial", "length"), nim_response("Απάντηση")]
         post.side_effect = [ollama_response("Ερώτηση"), ollama_response("Τσακώνικα")]
-        app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
-        app.chat_input[0].set_value("Καούρα").run()
+        app = english_app()
+        send(app, "Καούρα")
         self.assertFalse(app.exception)
         self.assertFalse(app.error)
         self.assertEqual(post.call_count, 2)
@@ -299,7 +380,7 @@ class PipelineTests(unittest.TestCase):
         from ui import FAVICON
         with Image.open(FAVICON) as icon:
             self.assertEqual(icon.size, (252, 252))
-        app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
+        app = english_app()
         self.assertFalse(app.exception)
         markup = "\n".join(m.value for m in app.markdown)
         self.assertIn('alt="Tsakonian Digital"', markup)
@@ -313,8 +394,8 @@ class PipelineTests(unittest.TestCase):
             request=httpx.Request("POST", "https://integrate.api.nvidia.com/v1/chat/completions"),
         )
         post.return_value = ollama_response("Ερώτηση")
-        app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
-        app.chat_input[0].set_value("Καούρα").run()
+        app = english_app()
+        send(app, "Καούρα")
         self.assertFalse(app.exception)
         self.assertIn("completed steps are saved", app.error[0].value)
         self.assertEqual(app.session_state["pending_turn"]["ell_in"], "Ερώτηση")
@@ -327,9 +408,9 @@ class PipelineTests(unittest.TestCase):
     def test_chat_pipeline_and_failed_turn_does_not_change_history(self, client_class, post):
         client_class.return_value.chat.completions.create.return_value = nim_response("Απάντηση")
         post.side_effect = [ollama_response("Ερώτηση"), ollama_response("Τσακώνικα")]
-        app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
+        app = english_app()
         self.assertFalse(app.exception)
-        app.chat_input[0].set_value("Καούρα").run()
+        send(app, "Καούρα")
         self.assertFalse(app.exception)
         self.assertFalse(app.error)
         self.assertEqual(app.session_state["turns"], [{
@@ -341,7 +422,7 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("Translate from Greek to Tsakonian:\n\nΑπάντηση<|eot_id|>",
                       calls[1].kwargs["json"]["prompt"])
         post.side_effect = httpx.ConnectError("Ollama unavailable")
-        app.chat_input[0].set_value("Second question").run()
+        send(app, "Second question")
         self.assertFalse(app.exception)
         self.assertIn("Ollama unavailable", app.error[0].value)
         self.assertEqual(len(app.session_state["turns"]), 1)
@@ -364,12 +445,12 @@ class PipelineTests(unittest.TestCase):
                                     [ollama_response("Ερώτηση")])
                 nim_call.side_effect = error if failed_stage == 2 else None
                 nim_call.return_value = nim_response("Απάντηση")
-                app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
+                app = english_app()
                 app.session_state["turns"] = [previous.copy()]
-                app.chat_input[0].set_value("Καούρα").run()
+                send(app, "Καούρα")
                 self.assertFalse(app.exception)
                 self.assertIn("Temporary outage", app.error[0].value)
-                self.assertTrue(app.chat_input[0].disabled)
+                self.assertTrue(app.button(key="send").disabled)
                 self.assertEqual(app.session_state["turns"], [previous])
                 pending = app.session_state["pending_turn"]
                 self.assertEqual("ell_in" in pending, failed_stage > 1)
@@ -386,7 +467,7 @@ class PipelineTests(unittest.TestCase):
                 self.assertFalse(app.exception)
                 self.assertFalse(app.error)
                 self.assertIsNone(app.session_state["pending_turn"])
-                self.assertFalse(app.chat_input[0].disabled)
+                self.assertFalse(app.button(key="send").disabled)
                 self.assertEqual(app.session_state["turns"], [previous, {
                     "tsd_in": "Καούρα", "ell_in": "Ερώτηση",
                     "ell_out": "Απάντηση", "tsd_out": "Τσακώνικα",
@@ -411,8 +492,8 @@ class PipelineTests(unittest.TestCase):
         nim_call = client_class.return_value.chat.completions.create
         nim_call.return_value = nim_response("Απάντηση")
         post.side_effect = [ollama_response("Ερώτηση"), httpx.ConnectError("Still unavailable")]
-        app = AppTest.from_file(str(Path(__file__).with_name("app.py"))).run()
-        app.chat_input[0].set_value("Καούρα").run()
+        app = english_app()
+        send(app, "Καούρα")
         post.side_effect = httpx.ConnectError("Still unavailable")
         next(b for b in app.button if b.label == "Retry failed step").click().run()
         self.assertFalse(app.exception)
@@ -423,14 +504,63 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(app.session_state["turns"], [])
         next(b for b in app.button if b.label == "Discard message").click().run()
         self.assertIsNone(app.session_state["pending_turn"])
-        self.assertFalse(app.chat_input[0].disabled)
+        self.assertFalse(app.button(key="send").disabled)
         self.assertFalse(app.error)
         post.side_effect = None
         post.return_value = ollama_response("New translation")
-        app.chat_input[0].set_value("New question").run()
+        send(app, "New question")
         self.assertFalse(app.exception)
         self.assertEqual(len(app.session_state["turns"]), 1)
         self.assertEqual(app.session_state["turns"][0]["tsd_in"], "New question")
+
+    @patch("pipeline.httpx.get")
+    def test_installed_models_exclude_the_translator_and_tolerate_ollama_being_down(self, get):
+        get.side_effect = None
+        get.return_value = httpx.Response(200, json={"models": [
+            {"name": "leonida:latest"}, {"name": "leonida-q8:latest"}, {"name": "gemma4:e4b"}, {"name": "qwen3:8b"},
+        ]}, request=httpx.Request("GET", "http://localhost:11434/api/tags"))
+        self.assertEqual(list_ollama_models("http://localhost:11434/v1/"), ["gemma4:e4b", "qwen3:8b"])
+        self.assertEqual(get.call_args.args[0], "http://localhost:11434/api/tags")
+        get.side_effect = httpx.ConnectError("Ollama is not running")
+        self.assertEqual(list_ollama_models(), [])
+
+    def test_nim_model_list_keeps_the_default_first_without_duplicates(self):
+        self.assertEqual(parse_model_list(None, "a/model"), ["a/model"])
+        self.assertEqual(parse_model_list(" b/model, a/model ,, c/model", "a/model"),
+                         ["a/model", "b/model", "c/model"])
+
+    @patch.dict(os.environ, {"NVIDIA_API_KEY": "test-key"})
+    @patch("pipeline.httpx.post")
+    @patch("openai.OpenAI")
+    def test_blank_message_is_ignored(self, client_class, post):
+        app = english_app()
+        send(app, "   ")
+        self.assertFalse(app.exception)
+        self.assertIsNone(app.session_state["pending_turn"])
+        post.assert_not_called()
+
+    @patch.dict(os.environ, {"NVIDIA_API_KEY": ""})
+    @patch("openai.OpenAI")
+    def test_missing_nim_key_warns_and_locks_sending_without_stopping_the_app(self, client_class):
+        app = english_app()
+        self.assertFalse(app.exception)
+        self.assertIn("NVIDIA_API_KEY", app.sidebar.warning[0].value)
+        self.assertTrue(app.button(key="send").disabled)
+        app.segmented_control(key="greek_backend").select("ollama").run()
+        self.assertFalse(app.button(key="send").disabled)
+        client_class.assert_not_called()
+
+    @patch.dict(os.environ, {"NVIDIA_API_KEY": "test-key"})
+    @patch("openai.OpenAI")
+    def test_interface_language_switches_without_losing_the_conversation(self, client_class):
+        app = english_app()
+        app.session_state["turns"] = [{"tsd_in": "a", "ell_in": "b", "ell_out": "c", "tsd_out": "d"}]
+        app.segmented_control(key="ui_lang").select("el").run()
+        self.assertFalse(app.exception)
+        markup = "\n".join(m.value for m in app.markdown)
+        self.assertIn('aria-current="page">Ψηφιακό Εργαστήριο', markup)
+        self.assertIn("Καθαρισμός συνομιλίας", [b.label for b in app.button])
+        self.assertEqual(len(app.session_state["turns"]), 1)
 
 
 if __name__ == "__main__":

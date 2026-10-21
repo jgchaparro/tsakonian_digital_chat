@@ -1,5 +1,27 @@
 # Tsakonian Digital Chat
 
+## Quickstart
+
+Needs Python 3 and a running [Ollama](https://ollama.com/) with the Leonida
+weights installed (see [Run on this computer](#run-on-this-computer)). In PowerShell:
+
+```powershell
+git clone https://github.com/jgchaparro/tsakonian_digital_chat.git
+cd tsakonian_digital_chat
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+copy .env.example .env
+ollama create leonida -f Modelfile
+ollama pull gemma4:e4b
+.venv/Scripts/python.exe -m streamlit run app.py
+```
+
+The chat opens at <http://localhost:8501>. After the first setup, only the last
+line is needed. To use NVIDIA NIM instead of Ollama, put your key in
+`NVIDIA_API_KEY` in `.env` and pick **NVIDIA NIM** in the sidebar.
+
+## About
+
 Repository: [jgchaparro/tsakonian_digital_chat](https://github.com/jgchaparro/tsakonian_digital_chat).
 The app uses the **Tsakonian Digital Lab** branding in its interface.
 
@@ -45,11 +67,12 @@ To configure a local file, copy `.env.example` to `.env` and fill in the key.
 Existing environment variables take precedence except for the provider and model
 defaults: local `.env` choices are reread on every Streamlit rerun. Edited provider
 or local-model defaults update open sessions once, retaining subsequent selections
-made in the settings panel and all saved conversation results.
+made in the sidebar and all saved conversation results.
 This lets **Retry failed step** use a replacement
 model without losing the completed translation. Never commit `.env`.
 
-Optional settings are listed in `.env.example`: `NIM_MODEL`, `LEONIDA_MODEL`,
+Optional settings are listed in `.env.example`: `NIM_MODEL`, `NIM_MODELS`
+(extra comma-separated NIM models for the sidebar selector), `LEONIDA_MODEL`,
 `OLLAMA_BASE_URL` (native URL or the previous `/v1` URL), and `OLLAMA_KEEP_ALIVE`.
 `NIM_MAX_TOKENS` defaults to 2048 and `NIM_REASONING_EFFORT` to `low`.
 The reasoning option is sent only to GPT-OSS models. The token allowance includes
@@ -108,11 +131,14 @@ request handling; translation quality still needs review by a Tsakonian speaker.
 
 ## Greek reply assistant
 
-Click the blue settings button immediately left of the message box to open
-**Greek reply assistant**. **Local Ollama** is the default provider and
-**Google Gemma 4 E4B** is the default local model. The **Local model** selector
-also offers **ILSP KriKri 8B (Greek)**. Configured custom model names are retained.
-The panel stays hidden until that button is clicked; clicking outside closes it.
+Settings live in the sidebar. **Reply assistant** switches between **Ollama**
+(the default) and **NVIDIA NIM**; **Model** changes with the provider. For Ollama it
+lists Google Gemma 4 E4B (default), ILSP KriKri 8B (Greek), the configured model and
+every other installed model reported by `/api/tags` (refreshed every 30 seconds;
+Leonida itself is excluded). For NIM it lists `NIM_MODEL` plus `NIM_MODELS`.
+Without `NVIDIA_API_KEY`, choosing NIM shows a warning and disables sending
+instead of stopping the app. **Show Greek translation** hides the Greek lines for
+practice, and **Clear conversation** is also in the sidebar.
 You can also switch providers or local models after a failed Greek
 reply and press **Retry failed step**; the saved initial translation is reused.
 Each completed turn records which assistant produced its Greek reply.
@@ -160,16 +186,57 @@ NVIDIA reference: [GPT-OSS generation limits and reasoning effort](https://docs.
 Also see [Nemotron Ultra](https://build.nvidia.com/nvidia/nemotron-3-ultra-550b-a55b)
 and [Cloud Functions invocation errors](https://docs.nvidia.com/nvcf/overview/generic-http-function-invocation).
 
+## Leonida's identity
+
+The Greek reply assistant's system prompt (`GREEK_SYSTEM` in `pipeline.py`)
+introduces it as Leonida, a digital assistant for chatting in Greek and Tsakonian
+that is here to help the user speak Tsakonian. It knows that the user writes in
+Tsakonian, that messages reach it translated into Greek and that its reply is
+translated back, so it asks for clarification when a translation makes no sense.
+Leonida's translation prompts are unchanged.
+
+## Interface language and starter phrases
+
+The sidebar's **Language** control switches the interface between English, Greek
+and Tsakonian. All interface texts and the starter phrases live in
+`assets/i18n.json`; a missing Tsakonian text falls back to English. The Tsakonian
+texts are translated once from the Greek ones by Leonida, then reviewed by hand:
+
+```powershell
+.venv/Scripts/python.exe -X utf8 scripts/translate_ui.py
+```
+
+The script fills only empty `tsd` values, so reviewed corrections are never
+overwritten; clear a value to translate it again. When a conversation is empty,
+Leonida greets the user and offers the starter phrases as buttons; clicking one
+sends it with its stored Greek (`ell`), so the first translation step is skipped. Starters without a Tsakonian text are hidden.
+
+## Activity log
+
+Every session writes to the console and to `logs/activity.log` (1 MB files, 3 kept,
+ignored by Git). It records, per session id:
+
+- each message the user types or starter they click;
+- each stage with its model, duration, input text and result: Tsakonian → Greek
+  (Leonida), the Greek reply (Ollama or NIM) and Greek → Tsakonian (Leonida);
+- skipped stages, failures, retries, discarded turns and cleared conversations.
+
+The log holds conversation text, so keep it private. Set `LOG_LEVEL` (for example
+`WARNING`) in `.env` to log less.
+
 ## Appearance
 
-The light theme follows the Tsakonian Digital Dictionary: a grey page, white
+The theme follows the Tsakonian Digital Dictionary: a grey page, white
 cards, dark/royal blue accents, Calibri/Segoe UI typography, and matching navigation.
+Messages are conversation bubbles: the user's on the right with the brand gradient
+and white text, Leonida's on the left in white with the helmet avatar. The message
+box and a separate round send button are pinned at the bottom; Enter also sends.
 `assets/logo.png` and `assets/favicon.png` are copies of the dictionary's original
 brand assets. The helmet is used as the browser favicon and assistant avatar.
 `ui.py` and `assets/style.css` hold the presentation; `.streamlit/config.toml`
-sets the default light theme. Both mobile and desktop layouts are supported.
-The introductory banner is removed. The composer and its settings button are
-pinned together at the bottom using Streamlit's bottom container.
+defines matching light and dark themes. The app follows the system setting or the
+theme chosen in Streamlit's menu, and `style.css` switches its colour variables to
+match. Both mobile and desktop layouts are supported.
 
 ## Checks
 
@@ -188,9 +255,9 @@ Local-backend tests cover Greek chat history, no API-key requirement, reuse of
 the same Leonida model, incomplete answers, and switching a failed cloud reply
 to KriKri without rerunning the source translation.
 Message checks verify translation placement for both speakers, persistence after
-retry, HTML escaping, and removal of completed pipeline details. Browser checks
-verify the hidden settings panel and its button
-position on desktop and mobile.
+retry, HTML escaping, and removal of completed pipeline details. Sidebar checks
+cover the installed-model list, the NIM model list, a missing NVIDIA key, blank
+messages and switching the interface language without losing the conversation.
 
 Initial live validation on 2026-10-21 passed: a complete Streamlit chat turn took
 28.8 seconds, translating `Κα ένι, ευχαριστού.` to `Καλά είμαι, ευχαριστώ.`,

@@ -1,0 +1,152 @@
+{
+  "languages": {
+    "en": "English",
+    "el": "Ελληνικά",
+    "tsd": "Τσακώνικα"
+  },
+  "strings": {
+    "nav_dictionary": {
+      "en": "Dictionary",
+      "el": "Λεξικό",
+      "tsd": "Λεξικό"
+    },
+    "nav_lab": {
+      "en": "Digital Lab",
+      "el": "Ψηφιακό Εργαστήριο",
+      "tsd": "Ψηφιακό Εργαστήριε"
+    },
+    "nav_writing": {
+      "en": "Writing helper",
+      "el": "Βοηθός γραφής",
+      "tsd": "Βοηθό τα γραθή"
+    },
+    "language": {
+      "en": "Language",
+      "el": "Γλώσσα",
+      "tsd": "Γρούσσα"
+    },
+    "assistant": {
+      "en": "Reply assistant",
+      "el": "Βοηθός απαντήσεων",
+      "tsd": "Βοηθό απογημού"
+    },
+    "model": {
+      "en": "Model",
+      "el": "Μοντέλο",
+      "tsd": "Μοντέλο"
+    },
+    "local_caption": {
+      "en": "Replies stay on this computer.",
+      "el": "Οι απαντήσεις μένουν σε αυτόν τον υπολογιστή.",
+      "tsd": "Οι απογησίλε είνι αραμούντε σ' έντεν̇η τον υπολογιστά."
+    },
+    "nim_caption": {
+      "en": "Replies use NVIDIA's cloud.",
+      "el": "Οι απαντήσεις χρησιμοποιούν το cloud της NVIDIA.",
+      "tsd": "Οι απογημοί είνι χρησιμοποιούντε το cloud τα NVIDIA."
+    },
+    "missing_key": {
+      "en": "Missing NVIDIA_API_KEY. Add it to a .env file or choose Ollama.",
+      "el": "Λείπει το NVIDIA_API_KEY. Πρόσθεσέ το στο αρχείο .env ή διάλεξε Ollama.",
+      "tsd": "Έν̇ι λείπουντα το NVIDIA_API_KEY. Πρόσθε νι τ̔ο αρχείο .env νη επίλεξε Ollama."
+    },
+    "show_greek": {
+      "en": "Show Greek translation",
+      "el": "Εμφάνιση ελληνικής μετάφρασης",
+      "tsd": "Εμφάνιση τα ελληνικά μετάφραση"
+    },
+    "clear": {
+      "en": "Clear conversation",
+      "el": "Καθαρισμός συνομιλίας",
+      "tsd": "Πάστρα τα κουβέντα"
+    },
+    "placeholder": {
+      "en": "Write in Tsakonian…",
+      "el": "Γράψε στα τσακώνικα…",
+      "tsd": "Γράψε τ̔α γρούσσα νάμου…"
+    },
+    "send": {
+      "en": "Send",
+      "el": "Αποστολή",
+      "tsd": "Απόλ̣υμα"
+    },
+    "welcome": {
+      "en": "I'm Leonida, a digital assistant for chatting in Greek and Tsakonian. Write to me in Tsakonian and I'll reply in Tsakonian, with the Greek underneath.",
+      "el": "Είμαι ο Λεωνίδας, ένας ψηφιακός βοηθός για συνομιλία στα ελληνικά και στα τσακώνικα. Γράψε μου στα τσακώνικα και θα σου απαντήσω στα τσακώνικα, με τα ελληνικά από κάτω.",
+      "tsd": "Ένι ο Λεωνίδα, ένα ψηφιακό βοηθέ για συνομιλία τ̔α τσακώνικα. Γράψε μι τ̔α τσακώνικα τσ̑αι θα ντι απαντίου τ̔α τσακώνικα, με τα ελληνικά ακατούσε."
+    },
+    "try_these": {
+      "en": "Try one of these:",
+      "el": "Δοκίμασε ένα από αυτά:",
+      "tsd": "Δοτσ̑ίμασε ένα από ένταϊ:"
+    },
+    "status_to_greek": {
+      "en": "Translating to Greek…",
+      "el": "Μετάφραση στα ελληνικά…",
+      "tsd": "Μετάφραση τ̔α ελληνικά…"
+    },
+    "status_thinking": {
+      "en": "Leonida is thinking…",
+      "el": "Ο Λεωνίδας σκέφτεται…",
+      "tsd": "Ο Λεωνίδα έν̇ι στσ̑εγγούμενε…"
+    },
+    "status_to_tsd": {
+      "en": "Translating to Tsakonian…",
+      "el": "Μετάφραση στα τσακώνικα…",
+      "tsd": "Μετάφραση τ̔α τσακώνικα…"
+    },
+    "status_done": {
+      "en": "Done",
+      "el": "Έτοιμο",
+      "tsd": "Έτοιμο"
+    },
+    "error_timeout": {
+      "en": "The reply service did not respond in time. Your completed steps are saved. Please retry this step.",
+      "el": "Η υπηρεσία απαντήσεων δεν απάντησε εγκαίρως. Τα βήματα που ολοκληρώθηκαν έχουν αποθηκευτεί. Δοκίμασε ξανά αυτό το βήμα.",
+      "tsd": "Α υπηρεσία του απογημού ό απογήτ̔ε εγκαίρως. Τα βήματα π̔η ολοκληρούτ̔αϊ είνι αποθηκευτά. Δοτσ̑ίμασε κίσου έγκεινι το βήμα."
+    },
+    "error_failed": {
+      "en": "This step failed:",
+      "el": "Αυτό το βήμα απέτυχε:",
+      "tsd": "Έγκεινι το βήμα αποτυχήτσ̑ε:"
+    },
+    "completed_steps": {
+      "en": "Completed steps",
+      "el": "Ολοκληρωμένα βήματα",
+      "tsd": "Τελευταία βήματα"
+    },
+    "retry": {
+      "en": "Retry failed step",
+      "el": "Επανάληψη βήματος",
+      "tsd": "Ξαναπατηματέ"
+    },
+    "discard": {
+      "en": "Discard message",
+      "el": "Απόρριψη μηνύματος",
+      "tsd": "Απόρριψη μηνύματου"
+    },
+    "footer": {
+      "en": "Built by Jaime García Chaparro for the Tsakonian Digital project",
+      "el": "Δημιουργήθηκε από τον Jaime García Chaparro για το έργο Tsakonian Digital",
+      "tsd": "Εδημιουργήτ̔ε από τον Jaime García Chaparro για το έργο Tsakonian Digital"
+    }
+  },
+  "starters": [
+    {
+      "ell": "Γεια σου, τι κάνεις;",
+      "tsd": "Γεια σου, τσ' εσ' ποίου;"
+    },
+    {
+      "ell": "Πώς σε λένε;",
+      "tsd": "Π̔ουρ ντ' είνι αούντε;"
+    },
+    {
+      "ell": "Από πού είσαι;",
+      "tsd": "Από κιά έσι;"
+    },
+    {
+      "ell": "Τι καιρό κάνει σήμερα;",
+      "tsd": "Τσι τσ̑αιρέ έν̇ι ποίου σάμερε;"
+    }
+  ]
+}

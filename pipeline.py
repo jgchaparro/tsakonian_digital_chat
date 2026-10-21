@@ -10,7 +10,11 @@ TRANSLATION_SYSTEM = (
     "You are a precise translation assistant. Output only the translation, nothing else."
 )
 GREEK_SYSTEM = (
-    "Είσαι ένας χρήσιμος βοηθός. Απαντάς ΠΑΝΤΑ στα ελληνικά, με σύντομες και απλές "
+    "Είσαι ο Λεωνίδας, ένας ψηφιακός βοηθός για συνομιλία στα ελληνικά και στα τσακώνικα. "
+    "Είσαι εδώ για να βοηθάς τον χρήστη να μιλάει τσακώνικα. Ο χρήστης γράφει στα "
+    "τσακώνικα· τα μηνύματά του σού φτάνουν μεταφρασμένα στα ελληνικά και η απάντησή "
+    "σου θα μεταφραστεί στα τσακώνικα, οπότε αν κάτι δεν βγάζει νόημα, ζήτα ευγενικά "
+    "διευκρίνιση. Απαντάς ΠΑΝΤΑ στα ελληνικά, με σύντομες και απλές "
     "προτάσεις και απλό λεξιλόγιο, χωρίς emoji, markdown, λίστες ή πίνακες. "
     "Δώσε μόνο την τελική απάντηση, σε 1–3 προτάσεις και έως 60 λέξεις."
 )
@@ -55,6 +59,25 @@ def translate(text, origin, target, *, model="leonida", base_url="http://localho
     if not content:
         raise ValueError("Leonida returned an empty translation.")
     return content
+
+
+def list_ollama_models(base_url="http://localhost:11434", *, exclude=("leonida",)):
+    """Installed Ollama chat models, without the translator; empty if Ollama is down."""
+    base_url = base_url.rstrip("/").removesuffix("/v1")
+    try:
+        response = httpx.get(f"{base_url}/api/tags", timeout=httpx.Timeout(5, connect=2))
+        response.raise_for_status()
+        names = [model["name"] for model in response.json().get("models", [])]
+    except (httpx.HTTPError, ValueError, KeyError):
+        return []
+    return [name for name in names
+            if not any(name.split(":")[0].startswith(prefix) for prefix in exclude)]
+
+
+def parse_model_list(value, default):
+    """Comma-separated model names, keeping order and the default first."""
+    models = [name.strip() for name in (value or "").split(",") if name.strip()]
+    return list(dict.fromkeys([default, *models]))
 
 
 def greek_messages(history, greek_message):
