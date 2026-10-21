@@ -1,0 +1,20 @@
+# Reuse the installed Leonida weights; no download or second model instance.
+FROM leonida-tsd2ell:latest
+
+# Match the model tokenizer's Llama 3.1 template, including its fixed date prelude.
+TEMPLATE """<|start_header_id|>system<|end_header_id|>
+
+Cutting Knowledge Date: December 2023
+Today Date: 26 Jul 2024
+
+{{ .System }}<|eot_id|>{{ range .Messages }}{{ if ne .Role "system" }}<|start_header_id|>{{ .Role }}<|end_header_id|>
+
+{{ .Content }}<|eot_id|>{{ end }}{{ end }}<|start_header_id|>assistant<|end_header_id|>
+
+"""
+SYSTEM You are a precise translation assistant. Output only the translation, nothing else.
+PARAMETER num_ctx 4096
+PARAMETER temperature 0
+PARAMETER stop <|eot_id|>
+PARAMETER stop <|start_header_id|>
+PARAMETER stop <|end_header_id|>
