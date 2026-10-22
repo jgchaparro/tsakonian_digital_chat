@@ -1,5 +1,5 @@
-# Reuse the installed Leonida weights; no download or second model instance.
-FROM leonida-tsd2ell:latest
+# Leonida V2 weights (ollama pull hf.co/jgchaparro/Llama-Leonida-v2-GGUF:Q5_K_M first).
+FROM hf.co/jgchaparro/Llama-Leonida-v2-GGUF:Q5_K_M
 
 # Match the model tokenizer's Llama 3.1 template, including its fixed date prelude.
 TEMPLATE """<|start_header_id|>system<|end_header_id|>

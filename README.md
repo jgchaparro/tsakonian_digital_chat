@@ -2,8 +2,9 @@
 
 ## Quickstart
 
-Needs Python 3 and a running [Ollama](https://ollama.com/) with the Leonida
-weights installed (see [Run on this computer](#run-on-this-computer)). In PowerShell:
+Needs Python 3 and a running [Ollama](https://ollama.com/). The translator is
+[Leonida V2](https://huggingface.co/jgchaparro/Llama-Leonida-v2-GGUF) (see
+[Run on this computer](#run-on-this-computer)). In PowerShell:
 
 ```powershell
 git clone https://github.com/jgchaparro/tsakonian_digital_chat.git
@@ -11,6 +12,7 @@ cd tsakonian_digital_chat
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt
 copy .env.example .env
+ollama pull hf.co/jgchaparro/Llama-Leonida-v2-GGUF:Q5_K_M
 ollama create leonida -f Modelfile
 ollama pull gemma4:e4b
 .venv/Scripts/python.exe -m streamlit run app.py
@@ -50,16 +52,17 @@ From the project directory in PowerShell:
 
 ```powershell
 .venv/Scripts/python.exe -m pip install -r requirements.txt
+ollama pull hf.co/jgchaparro/Llama-Leonida-v2-GGUF:Q5_K_M
 ollama create leonida -f Modelfile
 ollama pull gemma4:e4b
 .venv/Scripts/python.exe -m streamlit run app.py
 ```
 
-Ollama must be running. The Modelfile reuses the already installed
-`leonida-tsd2ell:latest` weight layer and sets the Llama 3.1 chat template.
-Both translation directions call only `leonida`; the old direction-specific
-models can remain on disk without being loaded by this app. On another machine,
-install the Leonida GGUF first and change the Modelfile's `FROM` line to its path.
+Ollama must be running. The Modelfile builds `leonida` from the Leonida V2
+Q5_K_M GGUF and sets the Llama 3.1 chat template. Both translation directions
+call only `leonida`. To go back to the first Leonida, change the Modelfile's
+`FROM` line to `hf.co/jgchaparro/Llama-Leonida-GGUF:Q5_K_M` and run
+`ollama create leonida -f Modelfile` again.
 
 The app reads `NVIDIA_API_KEY` from the environment or this directory's `.env`.
 The key is needed only when NVIDIA NIM is selected; local assistants work without it.
@@ -110,12 +113,11 @@ requests use temperature zero and carry no chat history. `pipeline.py` includes
 the template's beginning-of-text token, role headers, end-of-turn tokens, assistant
 generation header, and the tokenizer's fixed date prelude used during training.
 
-The installed direction-specific GGUFs have identical tensor payloads but their
-embedded Jinja templates automatically prepend opposite translation directions.
-Live `/api/chat` tests still followed the embedded direction after changing the
-Modelfile template. Using `raw: true` bypasses that template and sends the precise
-serialized prompt once, so a single loaded model translates both ways. No second
-weight file needs to be downloaded or loaded.
+Using `raw: true` bypasses the template embedded in the GGUF and sends the exact
+serialized prompt the model was trained on, so a single loaded model translates
+both ways. (The first Leonida's direction-specific GGUFs embedded templates that
+prepended a fixed direction; the Leonida V2 GGUF has the standard Llama 3.1
+template.)
 
 Empty responses or responses that remain token-limited stop the pipeline; an
 unfinished answer is never translated or added to history. Completed steps are
