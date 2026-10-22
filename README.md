@@ -3,7 +3,7 @@
 ## Quickstart
 
 Needs Python 3 and a running [Ollama](https://ollama.com/). The translator is
-[Leonida V2](https://huggingface.co/jgchaparro/Llama-Leonida-v2-GGUF) (see
+[Leonida](https://huggingface.co/jgchaparro/Llama-Leonida-GGUF) (see
 [Run on this computer](#run-on-this-computer)). In PowerShell:
 
 ```powershell
@@ -12,7 +12,7 @@ cd tsakonian_digital_chat
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt
 copy .env.example .env
-ollama pull hf.co/jgchaparro/Llama-Leonida-v2-GGUF:Q5_K_M
+ollama pull hf.co/jgchaparro/Llama-Leonida-GGUF:Q5_K_M
 ollama create leonida -f Modelfile
 ollama pull gemma4:e4b
 .venv/Scripts/python.exe -m streamlit run app.py
@@ -52,16 +52,16 @@ From the project directory in PowerShell:
 
 ```powershell
 .venv/Scripts/python.exe -m pip install -r requirements.txt
-ollama pull hf.co/jgchaparro/Llama-Leonida-v2-GGUF:Q5_K_M
+ollama pull hf.co/jgchaparro/Llama-Leonida-GGUF:Q5_K_M
 ollama create leonida -f Modelfile
 ollama pull gemma4:e4b
 .venv/Scripts/python.exe -m streamlit run app.py
 ```
 
-Ollama must be running. The Modelfile builds `leonida` from the Leonida V2
+Ollama must be running. The Modelfile builds `leonida` from the Leonida
 Q5_K_M GGUF and sets the Llama 3.1 chat template. Both translation directions
-call only `leonida`. To go back to the first Leonida, change the Modelfile's
-`FROM` line to `hf.co/jgchaparro/Llama-Leonida-GGUF:Q5_K_M` and run
+call only `leonida`. To use the earlier Leonida Beta instead, change the Modelfile's
+`FROM` line to `hf.co/jgchaparro/Llama-Leonida-Beta-GGUF:Q5_K_M` and run
 `ollama create leonida -f Modelfile` again.
 
 The app reads `NVIDIA_API_KEY` from the environment or this directory's `.env`.
@@ -115,8 +115,8 @@ generation header, and the tokenizer's fixed date prelude used during training.
 
 Using `raw: true` bypasses the template embedded in the GGUF and sends the exact
 serialized prompt the model was trained on, so a single loaded model translates
-both ways. (The first Leonida's direction-specific GGUFs embedded templates that
-prepended a fixed direction; the Leonida V2 GGUF has the standard Llama 3.1
+both ways. (Leonida Beta's direction-specific GGUFs embedded templates that
+prepended a fixed direction; the Leonida GGUF has the standard Llama 3.1
 template.)
 
 Empty responses or responses that remain token-limited stop the pipeline; an
