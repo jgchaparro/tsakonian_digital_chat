@@ -60,9 +60,8 @@ ollama pull gemma4:e4b
 
 Ollama must be running. The Modelfile builds `leonida` from the Leonida
 Q5_K_M GGUF and sets the Llama 3.1 chat template. Both translation directions
-call only `leonida`. To use the earlier Leonida Beta instead, change the Modelfile's
-`FROM` line to `hf.co/jgchaparro/Llama-Leonida-Beta-GGUF:Q5_K_M` and run
-`ollama create leonida -f Modelfile` again.
+call only `leonida`. To use another Leonida build, create it under its own name
+from a Modelfile with a different `FROM` line and set `LEONIDA_MODEL` in `.env`.
 
 The app reads `NVIDIA_API_KEY` from the environment or this directory's `.env`.
 The key is needed only when NVIDIA NIM is selected; local assistants work without it.
