@@ -7,7 +7,7 @@ Digital Lab branding and shares the dictionary's visual style.
 
 - `app.py`: chat UI, assistant settings, saved pipeline stages and retries.
 - `pipeline.py`: one local Leonida translator for both directions; Greek replies
-  use local Google Gemma 4 E4B by default. KriKri and NVIDIA NIM are optional.
+  use local Google Gemma 4 E4B by default. KriKri, NVIDIA NIM, OpenAI and Gemini are optional (keys only from the environment).
 - `ui.py`, `assets/`, `.streamlit/config.toml`: presentation and original brand assets.
 - `test_lab.py`: mocked pipeline and Streamlit integration checks.
 

@@ -289,3 +289,12 @@ A complete browser chat turn using Gemma and the same Leonida translator took
 57.2 seconds. All 20 automated checks pass. Desktop/mobile checks measured the
 same 4.16-pixel text-to-Greek gap for both speakers and confirmed that completed
 messages have no pipeline expander or progress panel.
+
+## Reply assistants, dialect and hosted translator
+
+- **Reply assistants:** Ollama, NVIDIA NIM, OpenAI and Google Gemini. Put `OPENAI_API_KEY`
+  or `GEMINI_API_KEY` (`GOOGLE_API_KEY` also works) in the environment or `.env` and pick the
+  provider in the sidebar. Add models with `OPENAI_MODELS` / `GEMINI_MODELS`. Without a key the
+  provider shows a warning and sending is locked.
+- **Hosted translator (optional):** set `TRANSLATOR_URL` to a private OpenAI-style `/v1/completions` endpoint, with `TRANSLATOR_TOKEN`
+  (or `HF_TOKEN`). The same raw Llama 3.1 prompt is sent; Ollama is used when the URL is empty.

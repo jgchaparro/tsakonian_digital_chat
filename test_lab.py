@@ -9,8 +9,8 @@ from openai import APITimeoutError
 from streamlit.testing.v1 import AppTest
 
 from pipeline import (DEFAULT_NIM_MODEL, DEFAULT_OLLAMA_MODEL, KRIKRI_MODEL, GREEK_SYSTEM,
-                      TRANSLATION_SYSTEM, ask_nim, ask_ollama, list_ollama_models,
-                      parse_model_list, translate)
+                      TRANSLATION_SYSTEM, ask_nim, ask_ollama, ask_openai_compatible,
+                      list_ollama_models, parse_model_list, provider_key, translate)
 from ui import caps, load_texts
 
 
@@ -232,6 +232,86 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(messages[1], {"role": "user", "content": "in 2"})
         self.assertEqual(messages[-1], {"role": "user", "content": "current"})
         self.assertNotIn("private", str(messages))
+
+    def test_openai_reasoning_models_use_completion_tokens_and_no_temperature(self):
+        client = Mock()
+        create = client.chat.completions.create
+        create.return_value = nim_response()
+        ask_openai_compatible(client, "gpt-5-mini", [], "question", provider="openai", max_tokens=1024)
+        kwargs = create.call_args.kwargs
+        self.assertEqual(kwargs["max_completion_tokens"], 1024)
+        self.assertNotIn("max_tokens", kwargs)
+        self.assertNotIn("temperature", kwargs)
+        self.assertEqual(kwargs["reasoning_effort"], "minimal")
+
+    def test_openai_classic_models_keep_temperature_without_reasoning_effort(self):
+        client = Mock()
+        create = client.chat.completions.create
+        create.return_value = nim_response()
+        ask_openai_compatible(client, "gpt-4.1-mini", [], "question", provider="openai")
+        kwargs = create.call_args.kwargs
+        self.assertEqual(kwargs["temperature"], 0.4)
+        self.assertNotIn("reasoning_effort", kwargs)
+        self.assertIn("max_completion_tokens", kwargs)
+
+    def test_gemini_uses_low_reasoning_and_reports_its_name_on_empty_reply(self):
+        client = Mock()
+        create = client.chat.completions.create
+        create.return_value = nim_response("Απάντηση")
+        ask_openai_compatible(client, "gemini-2.5-flash", [], "question", provider="gemini")
+        self.assertEqual(create.call_args.kwargs["reasoning_effort"], "low")
+        self.assertEqual(create.call_args.kwargs["max_tokens"], 2048)
+        create.return_value = nim_response(None)
+        with self.assertRaisesRegex(ValueError, "Google Gemini"):
+            ask_openai_compatible(client, "gemini-2.5-flash", [], "question", provider="gemini")
+
+    def test_provider_key_reads_only_the_environment_and_accepts_google_alias(self):
+        self.assertIsNone(provider_key("gemini", {}))
+        self.assertEqual(provider_key("gemini", {"GOOGLE_API_KEY": "k"}), "k")
+        self.assertEqual(provider_key("gemini", {"GEMINI_API_KEY": "a", "GOOGLE_API_KEY": "b"}), "a")
+        self.assertEqual(provider_key("openai", {"OPENAI_API_KEY": "o"}), "o")
+
+    @patch("pipeline.httpx.post")
+    def test_hosted_translator_gets_the_same_prompt_on_completions(self, post):
+        post.return_value = httpx.Response(
+            200, json={"choices": [{"text": " Τσακώνικα ", "finish_reason": "stop"}]},
+            request=httpx.Request("POST", "https://endpoint.example/v1/completions"))
+        result = translate("Γεια", "Greek", "Tsakonian", endpoint_url="https://endpoint.example/",
+                           endpoint_token="t")
+        self.assertEqual(result, "Τσακώνικα")
+        self.assertEqual(post.call_args.args[0], "https://endpoint.example/v1/completions")
+        self.assertEqual(post.call_args.kwargs["headers"], {"Authorization": "Bearer t"})
+        self.assertIn("Translate from Greek to Tsakonian:\n\nΓεια", post.call_args.kwargs["json"]["prompt"])
+        post.return_value = httpx.Response(
+            200, json={"choices": [{"text": "x", "finish_reason": "length"}]},
+            request=httpx.Request("POST", "https://endpoint.example/v1/completions"))
+        with self.assertRaisesRegex(ValueError, "output limit"):
+            translate("Γεια", "Greek", "Tsakonian", endpoint_url="https://endpoint.example")
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "", "NVIDIA_API_KEY": ""})
+    @patch("openai.OpenAI")
+    def test_missing_openai_key_warns_and_locks_sending(self, client_class):
+        app = english_app()
+        app.segmented_control(key="greek_backend").select("openai").run()
+        self.assertFalse(app.exception)
+        self.assertIn("OPENAI_API_KEY", app.sidebar.warning[0].value)
+        self.assertTrue(app.button(key="send").disabled)
+        client_class.assert_not_called()
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"})
+    @patch("pipeline.httpx.post")
+    @patch("openai.OpenAI")
+    def test_gemini_reply_uses_its_endpoint_model_and_logs_the_provider(self, client_class, post):
+        client_class.return_value.chat.completions.create.return_value = nim_response("Απάντηση")
+        post.return_value = ollama_response("Τσακώνικα")
+        app = english_app()
+        app.segmented_control(key="greek_backend").select("gemini").run()
+        send(app, "Καούρα")
+        self.assertFalse(app.exception)
+        self.assertIn("generativelanguage.googleapis.com", client_class.call_args.kwargs["base_url"])
+        self.assertEqual(client_class.return_value.chat.completions.create.call_args.kwargs["model"],
+                         "gemini-2.5-flash")
+        self.assertEqual(app.session_state["turns"][-1]["greek_model"], "gemini-2.5-flash")
 
     def test_capitalised_labels_drop_accents_but_keep_letter_diacritics(self):
         cases = {"Μοντέλο": "ΜΟΝΤΕΛΟ", "τσάι": "ΤΣΑΪ", "αύριο": "ΑΥΡΙΟ",

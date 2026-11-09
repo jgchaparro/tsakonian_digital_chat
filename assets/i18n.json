@@ -129,6 +129,26 @@
       "en": "Built by Jaime García Chaparro for the Tsakonian Digital project",
       "el": "Δημιουργήθηκε από τον Jaime García Chaparro για το έργο Tsakonian Digital",
       "tsd": "Εδημιουργήτ̔ε από τον Jaime García Chaparro για το έργο Tsakonian Digital"
+    },
+    "openai_caption": {
+      "en": "Replies use OpenAI's cloud.",
+      "el": "Οι απαντήσεις χρησιμοποιούν το cloud της OpenAI.",
+      "tsd": ""
+    },
+    "gemini_caption": {
+      "en": "Replies use Google's cloud.",
+      "el": "Οι απαντήσεις χρησιμοποιούν το cloud της Google.",
+      "tsd": ""
+    },
+    "missing_key_openai": {
+      "en": "Missing OPENAI_API_KEY. Add it to a .env file or choose Ollama.",
+      "el": "Λείπει το OPENAI_API_KEY. Πρόσθεσέ το στο αρχείο .env ή διάλεξε Ollama.",
+      "tsd": ""
+    },
+    "missing_key_gemini": {
+      "en": "Missing GEMINI_API_KEY. Add it to a .env file or choose Ollama.",
+      "el": "Λείπει το GEMINI_API_KEY. Πρόσθεσέ το στο αρχείο .env ή διάλεξε Ollama.",
+      "tsd": ""
     }
   },
   "starters": [

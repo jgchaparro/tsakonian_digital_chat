@@ -24,8 +24,9 @@ def load_helpers(pipeline_version, ui_version):
 load_helpers(Path(pipeline_module.__file__).stat().st_mtime_ns,
              Path(ui_module.__file__).stat().st_mtime_ns)
 
-from pipeline import (DEFAULT_NIM_MODEL, DEFAULT_OLLAMA_MODEL, KRIKRI_MODEL, ask_nim, ask_ollama,
-                      list_ollama_models, parse_model_list, translate)
+from pipeline import (DEFAULT_NIM_MODEL, DEFAULT_OLLAMA_MODEL, KRIKRI_MODEL, PROVIDERS,
+                      ask_ollama, ask_openai_compatible, list_ollama_models, parse_model_list,
+                      provider_key, translate)
 from activity_log import clip, log, setup_logging
 from ui import FAVICON, caps, load_texts, render_footer, render_header, render_welcome, translator
 
@@ -37,9 +38,22 @@ load_dotenv(env_path)
 local_settings = dotenv_values(env_path)
 NIM_MODEL = local_settings.get("NIM_MODEL") or os.environ.get("NIM_MODEL", DEFAULT_NIM_MODEL)
 NIM_MODELS = parse_model_list(local_settings.get("NIM_MODELS") or os.environ.get("NIM_MODELS"), NIM_MODEL)
+# Default and extra models of the API providers; the first is the default.
+API_DEFAULTS = {
+    "nim": NIM_MODEL,
+    **{name: local_settings.get(f"{name.upper()}_MODEL") or os.environ.get(f"{name.upper()}_MODEL")
+       or PROVIDERS[name]["default_model"] for name in ("openai", "gemini")},
+}
+API_MODELS = {"nim": NIM_MODELS, **{
+    name: parse_model_list(local_settings.get(PROVIDERS[name]["models_env"])
+                           or os.environ.get(PROVIDERS[name]["models_env"]), API_DEFAULTS[name])
+    for name in ("openai", "gemini")}}
 OLLAMA_CHAT_MODEL = local_settings.get("OLLAMA_CHAT_MODEL") or os.environ.get("OLLAMA_CHAT_MODEL", DEFAULT_OLLAMA_MODEL)
 OLLAMA_CHAT_KEEP_ALIVE = os.environ.get("OLLAMA_CHAT_KEEP_ALIVE", os.environ.get("KRIKRI_KEEP_ALIVE", "5m"))
 LEONIDA_MODEL = os.environ.get("LEONIDA_MODEL", "leonida")
+# Optional hosted translator (OpenAI-style /v1/completions); Ollama is the fallback.
+TRANSLATOR_URL = os.environ.get("TRANSLATOR_URL")
+TRANSLATOR_TOKEN = os.environ.get("TRANSLATOR_TOKEN") or os.environ.get("HF_TOKEN")
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_KEEP_ALIVE = os.environ.get("OLLAMA_KEEP_ALIVE", "1h")
 NIM_MAX_TOKENS = int(os.environ.get("NIM_MAX_TOKENS", "2048"))
@@ -71,7 +85,6 @@ if "show_greek" not in st.session_state:
 t = translator(texts, st.session_state.ui_lang)
 render_header(t, st.context.theme.type)
 
-api_key = os.environ.get("NVIDIA_API_KEY")
 with st.sidebar:
     st.segmented_control(
         caps(t("language")), list(texts["languages"]), key="ui_lang", required=True,
@@ -80,16 +93,19 @@ with st.sidebar:
     default_backend = local_settings.get("GREEK_BACKEND") or os.environ.get("GREEK_BACKEND", "ollama")
     # Apply edited defaults to open sessions once, while retaining later
     # choices made with the settings controls and all conversation state.
-    defaults = (default_backend, OLLAMA_CHAT_MODEL, NIM_MODEL)
+    defaults = (default_backend, OLLAMA_CHAT_MODEL, *API_DEFAULTS.values())
     if st.session_state.get("assistant_defaults") != defaults:
         st.session_state.greek_backend = default_backend
         st.session_state.local_greek_model = OLLAMA_CHAT_MODEL
-        st.session_state.nim_model = NIM_MODEL
+        for name, default in API_DEFAULTS.items():
+            st.session_state[f"{name}_model"] = default
         st.session_state.assistant_defaults = defaults
     backend = st.segmented_control(
-        caps(t("assistant")), ["ollama", "nim"], key="greek_backend", required=True,
-        format_func=lambda value: "NVIDIA NIM" if value == "nim" else "Ollama", width="stretch",
+        caps(t("assistant")), ["ollama", *PROVIDERS], key="greek_backend", required=True,
+        format_func=lambda value: PROVIDERS[value]["label"] if value in PROVIDERS else "Ollama",
+        width="stretch",
     )
+    api_key = provider_key(backend, os.environ) if backend in PROVIDERS else None
     if backend == "ollama":
         local_models = list(dict.fromkeys([
             OLLAMA_CHAT_MODEL, DEFAULT_OLLAMA_MODEL, KRIKRI_MODEL,
@@ -101,10 +117,10 @@ with st.sidebar:
         )
         st.caption(t("local_caption"))
     else:
-        NIM_MODEL = st.selectbox(caps(t("model")), NIM_MODELS, key="nim_model")
-        st.caption(t("nim_caption"))
+        API_MODEL = st.selectbox(caps(t("model")), API_MODELS[backend], key=f"{backend}_model")
+        st.caption(t("nim_caption" if backend == "nim" else f"{backend}_caption"))
         if not api_key:
-            st.warning(t("missing_key"))
+            st.warning(t("missing_key" if backend == "nim" else f"missing_key_{backend}"))
     st.toggle(caps(t("show_greek")), key="show_greek")
     st.divider()
     if st.button(t("clear"), icon=":material/delete:", width="stretch"):
@@ -114,7 +130,7 @@ with st.sidebar:
         st.rerun()
 
 show_greek = st.session_state.show_greek
-locked = st.session_state.get("pending_turn") is not None or (backend == "nim" and not api_key)
+locked = st.session_state.get("pending_turn") is not None or (backend in PROVIDERS and not api_key)
 with st.bottom:
     with st.form("composer", clear_on_submit=True, border=False):
         with st.container(horizontal=True, vertical_alignment="center", gap="small"):
@@ -124,16 +140,16 @@ with st.bottom:
                                          icon=":material/send:", disabled=locked)
 prompt = message.strip() if sent and message else None
 
-nim = OpenAI(
-    base_url="https://integrate.api.nvidia.com/v1", api_key=api_key,
-    timeout=60, max_retries=0,
-) if backend == "nim" and api_key else None
+client = OpenAI(
+    base_url=PROVIDERS[backend]["base_url"], api_key=api_key, timeout=60, max_retries=0,
+) if backend in PROVIDERS and api_key else None
 
 
 def leonida(text, origin, target):
     return translate(
         text, origin, target, model=LEONIDA_MODEL,
         base_url=OLLAMA_BASE_URL, keep_alive=OLLAMA_KEEP_ALIVE,
+        endpoint_url=TRANSLATOR_URL, endpoint_token=TRANSLATOR_TOKEN,
     )
 
 
@@ -223,7 +239,7 @@ if pending is not None:
             kept = [key for key in ("ell_in", "ell_out", "tsd_out") if key in pending]
             if "error" in pending:
                 note(f"retry requested; completed stages kept: {', '.join(kept) or 'none'}")
-            reply_model = NIM_MODEL if backend == "nim" else OLLAMA_CHAT_MODEL
+            reply_model = API_MODEL if backend in PROVIDERS else OLLAMA_CHAT_MODEL
             note(f"turn started (history {len(st.session_state.turns)} turns, reply assistant "
                  f"{backend}/{reply_model}, translator {LEONIDA_MODEL})")
             turn_started = time.perf_counter()
@@ -251,15 +267,16 @@ if pending is not None:
                                 ))
                             pending["greek_model"] = OLLAMA_CHAT_MODEL
                         else:
-                            if nim is None:
-                                raise ValueError(t("missing_key"))
+                            if client is None:
+                                raise ValueError(t("missing_key" if backend == "nim" else f"missing_key_{backend}"))
                             pending["ell_out"] = timed(
-                                "Greek reply", f"nim/{NIM_MODEL}", pending["ell_in"],
-                                lambda: ask_nim(
-                                    nim, NIM_MODEL, st.session_state.turns, pending["ell_in"],
-                                    max_tokens=NIM_MAX_TOKENS, reasoning_effort=NIM_REASONING_EFFORT,
+                                "Greek reply", f"{backend}/{API_MODEL}", pending["ell_in"],
+                                lambda: ask_openai_compatible(
+                                    client, API_MODEL, st.session_state.turns, pending["ell_in"],
+                                    provider=backend, max_tokens=NIM_MAX_TOKENS,
+                                    reasoning_effort=NIM_REASONING_EFFORT,
                                 ))
-                            pending["greek_model"] = NIM_MODEL
+                            pending["greek_model"] = API_MODEL
                     else:
                         note(f"Greek reply skipped, stored reply: {clip(pending['ell_out'])}")
                     stage = t("status_to_tsd")
